@@ -3,8 +3,10 @@
  */
 #include <stdio.h>
 #include <fcntl.h>
+#include <stdlib.h>
+
 #include <unistd.h>
-int test1()
+int cat_test()
 {
     int fd = open("/proc/mytaskinfo", O_RDWR);
     if (fd == -1)
@@ -12,36 +14,42 @@ int test1()
         printf("Couldn't open file\n");
         return -1;
     }
-    char buf[256];
+    char buf[10000];
 
-    int r = read(fd, &buf, 256);
-    printf("return value: %d\n buf: %.256s\n", r, buf);
+    int r = read(fd, &buf, 10000);
+    printf("cat test result:\n %.10000s\n", buf);
     close(fd);
     return 0;
 }
-int test2()
+int echo_test()
 {
+    int fd;
+    char buf[256];
 
-    int fd = open("/proc/mytaskinfo", O_RDWR);
+    fd = open("/proc/mytaskinfo", O_RDWR);
     if (fd == -1)
     {
         printf("Couldn't open file\n");
         return -1;
     }
-    char buf;
-    int r;
+    int w = write(fd, "R", 1);
 
-    /* On success, read returns the number of bytes read
-    (zero indicates end of file)*/
-    while ((r = read(fd, &buf, 1)) > 0)
+    close(fd);
+    fd = open("/proc/mytaskinfo", O_RDWR);
+    if (fd == -1)
     {
-        printf("return value: %d\n buf: %c\n", r, buf);
+        printf("Couldn't open file\n");
+        return -1;
     }
+    int r = read(fd, &buf, 256);
+    printf("echo test result:\n%.256s\n", buf);
     close(fd);
     return 0;
 }
 
 int main()
 {
-    test2();
+    echo_test();
+    cat_test();
+    return 0;
 }
