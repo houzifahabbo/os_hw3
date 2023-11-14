@@ -5,17 +5,13 @@
 #include <linux/proc_fs.h> /*proc_ops, proc)create, proc_remove, remove_proc_entry...*/
 #include <asm/uaccess.h>
 
-#define INITIAL_BUFFER_SIZE 512
-
-#define PROCFS_MAX_SIZE 2048UL
-
-size_t buffer_capacity = INITIAL_BUFFER_SIZE;
+#define INITIAL_BUFFER_SIZE 2048UL
 
 static int state = -2;
 
 static char *procfs_buffer;
 
-static unsigned long procfs_buffer_size = -2;
+static unsigned long procfs_buffer_size = 0;
 
 static const char *const task_state_array[] = {
     "R (running)",
@@ -32,7 +28,7 @@ static const char *const task_state_array[] = {
 ssize_t my_read(struct file *file, char __user *usr_buf, size_t size, loff_t *offset)
 {
     struct task_struct *task;
-    size_t bytes_written = 0;
+    size_t bytes_written = 0, buffer_capacity = INITIAL_BUFFER_SIZE;
     printk(KERN_INFO "Message from read: %d\n", state);
 
     if (*offset || procfs_buffer_size == 0)
@@ -50,7 +46,7 @@ ssize_t my_read(struct file *file, char __user *usr_buf, size_t size, loff_t *of
             char *temp_buffer = krealloc(procfs_buffer, buffer_capacity * 2, GFP_KERNEL);
             if (!temp_buffer)
             {
-                // Handle reallocation failure
+                printk(KERN_INFO "error in temp buffer: %d\n", state);
                 kfree(procfs_buffer);
                 return -ENOMEM;
             }
@@ -67,7 +63,7 @@ ssize_t my_read(struct file *file, char __user *usr_buf, size_t size, loff_t *of
 
             if (ret < 0)
             {
-                // Handle error
+                kfree(procfs_buffer);
                 return ret;
             }
 
@@ -83,7 +79,7 @@ ssize_t my_read(struct file *file, char __user *usr_buf, size_t size, loff_t *of
     }
 
     *offset += procfs_buffer_size;
-
+    state = -2;
     return procfs_buffer_size;
 }
 
@@ -92,7 +88,7 @@ ssize_t my_write(struct file *file, const char __user *usr_buf, size_t size, lof
 {
     printk(KERN_INFO "Message from write before: %d\n", state);
 
-    procfs_buffer_size = min(PROCFS_MAX_SIZE, size);
+    procfs_buffer_size = min(INITIAL_BUFFER_SIZE, size);
 
     if (copy_from_user(procfs_buffer, usr_buf, procfs_buffer_size))
 
@@ -146,16 +142,19 @@ ssize_t my_write(struct file *file, const char __user *usr_buf, size_t size, lof
 
 int my_open(struct inode *inode, struct file *file)
 {
-    try_module_get(THIS_MODULE);
+    printk(KERN_INFO "Message from open: %d\n", state);
+    procfs_buffer = kmalloc(INITIAL_BUFFER_SIZE, GFP_KERNEL);
     if (!procfs_buffer)
     {
-        printk(KERN_INFO "Message from open: %d\n", state);
-        procfs_buffer = kmalloc(INITIAL_BUFFER_SIZE, GFP_KERNEL);
-        if (!procfs_buffer)
-            return -ENOMEM;
+        printk(KERN_INFO "error in process buffer: %d\n", state);
+        return -ENOMEM;
+    }
 
-        // Initialize the buffer
-        procfs_buffer[0] = '\0';
+    // Initialize the buffer
+    procfs_buffer[INITIAL_BUFFER_SIZE] = '\0';
+    procfs_buffer_size = INITIAL_BUFFER_SIZE;
+    if (state == -2)
+    {
         state = -1;
     }
 
@@ -165,9 +164,18 @@ int my_open(struct inode *inode, struct file *file)
 int my_release(struct inode *inode, struct file *file)
 
 {
+    printk(KERN_INFO "Message from close: %d\n", state);
 
-    module_put(THIS_MODULE);
-    kfree(procfs_buffer);
-
+    if (procfs_buffer)
+    {
+        kfree(procfs_buffer);
+        procfs_buffer_size = 0;
+    }
     return 0;
 }
+
+// sudo service ssh start
+
+// make clean && make && sudo rmmod -f mytaskinfo.ko && sudo insmod mytaskinfo.ko
+
+// make clean && make && sudo insmod mytaskinfo.ko
